@@ -1,0 +1,59 @@
+# This workflow will do a clean install of node dependencies, build the source code and run tests across different versions of node
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
+
+name: CloudGuard Workload - Serverless CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-18.04
+
+    name: Packaging via SLS
+    steps:
+      - name: Configure AWS credentials from Github Secrets
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_ACCESS_SECRET_KEY }}
+          aws-region: eu-west-1
+      - name: Checkout repo
+        uses: actions/checkout@master
+      - name: Setup node
+        uses: actions/setup-node@master
+        with:
+          node-version: 12.18.1   
+      - name: Decrypting CloudGuard access config 
+        env:
+          SECRET_PASSPHRASE: ${{ secrets.CGW_SERVERLESS }}
+        run: |
+          
+          chmod +x decrypt_secret.sh
+          
+          ./decrypt_secret.sh
+      - name: Installing dependencies
+        env:
+          NPM_CONFIG_PREFIX: "~/.npm-global" 
+        run: |
+          export PATH=~/.npm-blobal/bin:$PATH
+          pip install requests
+          npm i -D https://artifactory.app.protego.io/cloudguard-serverless-plugin.tgz
+          npm i -g serverless serverless-finch serverless-offline serverless-scriptable-plugin serverless-stack-output
+          source ~/.profile
+      - name: Running sls package / CloudGuard Proact Scan
+        run: |
+          ~/.npm-global/bin/serverless package
+      - name: Upload reports if failed
+        uses: actions/upload-artifact@v2
+        # if: failure() # Upload report regardless of failure
+        with:
+          name: CloudGuard report
+          path: cloudguard_output/CloudGuardScanReport.html
+        
+      
+        
